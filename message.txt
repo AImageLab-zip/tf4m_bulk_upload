@@ -1,0 +1,401 @@
+# ToothFairy4M API Documentation
+
+## Authentication
+
+All API endpoints require authentication through web sessions (exception made for /login/ ofc).
+
+### Login Process
+1. **Login URL**: `POST /login/`
+2. **Authentication**: Use Django's standard login form with username and password
+3. **Session**: After successful login, you'll receive session cookies for subsequent requests
+4. **CSRF Protection**: Include CSRF tokens in POST requests (for web form submissions)
+
+### User Roles
+The system has different user roles with varying permissions:
+- **Standard User**: Can view scans
+- **Annotator**: Can upload and annotate scans
+- **Administrator**: Full access to all features
+- **Student Developer**: Can upload scans, see debug content
+- **Demo User**: Limited demo access
+
+### Registration
+- **Register URL**: `POST /register/`
+- **Invitation System**: New users need invitations
+
+### Authentication Requirements
+- Must be logged in with valid session cookies
+- Upload permissions required for file uploads (`annotator`, `admin`, or `student_dev` roles)
+- Different visibility levels based on user roles
+
+## File Upload API
+
+### Scan Upload
+**Endpoint**: `POST /upload/`
+
+**Authentication**: Required (must be logged in with upload permissions)
+
+**Content-Type**: `multipart/form-data`
+
+**Form Fields**:
+```
+- upper_scan_raw: File (STL file for upper jaw IOS scan)
+- lower_scan_raw: File (STL file for lower jaw IOS scan)  
+- cbct: File (CBCT scan file - NIFTI or DICOM)
+- cbct_upload_type: String ('file' or 'folder')
+- cbct_folder_files: Multiple files (for DICOM folder uploads)
+- folder: String (optional folder assignment)
+- name: String (scan pair name)
+```
+
+**File Types Supported**:
+- **IOS Scans**: STL files for upper and lower jaw scans
+- **CBCT**: NIFTI files (.nii, .nii.gz) or DICOM folders
+- **Audio**: WebM files for voice captions
+
+**Upload Limits**:
+- Maximum file size: 5GB per file
+- Maximum number of files: 1500 (for DICOM folders)
+
+**Response**: Redirects to scan list with success/error messages
+
+**Processing Flow**:
+1. Files are uploaded and saved to dataset storage
+2. Processing jobs are automatically created for uploaded files
+3. Jobs run asynchronously to process the uploaded data
+4. Processing status can be monitored via Processing Job APIs
+
+### Voice Caption Upload
+**Endpoint**: `POST /scan/<scanpair_id>/voice-caption/`
+
+**Parameters**:
+- `scanpair_id`: Integer ID of the scan pair
+
+**Form Fields**:
+```
+- audio_file: File (WebM audio file)
+- modality: String (type of modality being described)
+```
+
+**Processing**: Audio files are automatically queued for transcription processing
+
+### Text Caption Upload
+**Endpoint**: `POST /scan/<scanpair_id>/text-caption/`
+
+**Parameters**:
+- `scanpair_id`: Integer ID of the scan pair
+
+**Form Fields**:
+```
+- text: String (manual text caption)
+- modality: String (type of modality being described)
+```
+
+## File Download API
+
+### Direct File Serving
+**Endpoint**: `GET /api/processing/files/serve/<file_id>/`
+
+**Parameters**:
+- `file_id`: Integer ID from FileRegistry
+
+**Authentication**: Required (session-based)
+
+**Response**: Direct file download with appropriate MIME type
+- CBCT files: `application/octet-stream`
+- STL files: `model/stl`
+- Audio files: `audio/webm`
+- Other files: Auto-detected MIME type
+
+**Headers**:
+```
+Content-Disposition: inline; filename="filename.ext"
+Content-Type: appropriate/mime-type
+```
+
+**Example**:
+```bash
+curl -H "Cookie: sessionid=your_session_id" \
+     "http://your-domain/api/processing/files/serve/123/"
+```
+
+### File Registry API
+**Endpoint**: `GET /api/processing/files/`
+
+**Authentication**: Required
+
+**Query Parameters**:
+```
+- file_type: String (filter by file type)
+- scanpair_id: String (filter by scan pair)
+- limit: Integer (pagination limit, default 50)
+- offset: Integer (pagination offset, default 0)
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "files": [
+    {
+      "id": 123,
+      "file_type": "cbct_processed",
+      "file_path": "/path/to/file",
+      "file_size": 1048576,
+      "file_hash": "sha256hash",
+      "created_at": "2024-01-01T12:00:00Z",
+      "metadata": {},
+      "scanpair_id": "SCAN001",
+      "patient_id": "PAT001",
+      "voice_caption_id": null,
+      "processing_job_id": 456
+    }
+  ],
+  "pagination": {
+    "total_count": 100,
+    "limit": 50,
+    "offset": 0,
+    "has_more": true
+  }
+}
+```
+
+### Scan Data APIs
+These endpoints provide access to processed scan data:
+
+**Scan Viewer Data**: `GET /api/scan/<scanpair_id>/data/`
+- Returns comprehensive scan data for viewer applications
+
+**CBCT Data**: `GET /api/scan/<scanpair_id>/cbct/`
+- Returns CBCT-specific data and metadata
+
+**Panoramic Data**: `GET /api/scan/<scanpair_id>/panoramic/`
+- Returns panoramic view data if available
+
+**NIFTI Metadata**: `GET /api/scan/<scanpair_id>/nifti-metadata/`
+- Returns NIFTI file metadata and properties
+
+
+### Health Check
+**Endpoint**: `GET /api/processing/health/`
+
+**Response**:
+```json
+{
+  "success": true,
+  "status": "healthy",
+  "pending_jobs": 5,
+  "processing_jobs": 2,
+  "dataset_dir_exists": true,
+  "dataset_raw_dir_exists": true,
+  "dataset_processed_dir_exists": true
+}
+```
+
+## Example Usage
+
+### Complete Upload/Download Workflow
+
+#### Python Example
+```python
+import requests
+import json
+
+# 1. Login
+session = requests.Session()
+
+# Get CSRF token first (for web forms)
+login_page = session.get('http://your-domain/login/')
+csrf_token = session.cookies.get('csrftoken')
+
+login_data = {
+    'username': 'your_username',
+    'password': 'your_password',
+    'csrfmiddlewaretoken': csrf_token
+}
+login_response = session.post('http://your-domain/login/', data=login_data)
+
+if login_response.status_code == 200:
+    print("Login successful")
+else:
+    print("Login failed")
+
+# 2. Upload files
+files = {
+    'upper_scan_raw': open('upper.stl', 'rb'),
+    'lower_scan_raw': open('lower.stl', 'rb'),
+    'cbct': open('cbct.nii', 'rb')
+}
+data = {
+    'name': 'Patient 001 Scan',
+    'cbct_upload_type': 'file',
+    'csrfmiddlewaretoken': session.cookies.get('csrftoken')
+}
+
+upload_response = session.post('http://your-domain/upload/', 
+                              files=files, data=data)
+
+if upload_response.status_code == 200:
+    print("Upload successful")
+else:
+    print("Upload failed")
+
+# Close files
+for file_obj in files.values():
+    file_obj.close()
+
+# 3. Get file registry
+files_response = session.get('http://your-domain/api/processing/files/')
+if files_response.status_code == 200:
+    files_data = files_response.json()
+    print(f"Found {len(files_data['files'])} files")
+else:
+    print("Failed to get file registry")
+
+# 4. Download a file
+if files_data['files']:
+    file_id = files_data['files'][0]['id']
+    download_response = session.get(
+        f'http://your-domain/api/processing/files/serve/{file_id}/'
+    )
+    
+    if download_response.status_code == 200:
+        # Save the downloaded file
+        with open('downloaded_file', 'wb') as f:
+            f.write(download_response.content)
+        print("File downloaded successfully")
+    else:
+        print("Download failed")
+
+# 5. Monitor processing jobs
+jobs_response = session.get('http://your-domain/api/processing/jobs/')
+if jobs_response.status_code == 200:
+    jobs_data = jobs_response.json()
+    for job in jobs_data['jobs']:
+        print(f"Job {job['id']}: {job['status']}")
+```
+
+#### cURL Examples
+
+**Login:**
+```bash
+# Get CSRF token
+curl -c cookies.txt http://your-domain/login/
+
+# Login with credentials
+curl -b cookies.txt -c cookies.txt \
+     -d "username=your_username&password=your_password&csrfmiddlewaretoken=TOKEN" \
+     http://your-domain/login/
+```
+
+**Upload files:**
+```bash
+curl -b cookies.txt \
+     -F "upper_scan_raw=@upper.stl" \
+     -F "lower_scan_raw=@lower.stl" \
+     -F "cbct=@cbct.nii" \
+     -F "name=Patient 001 Scan" \
+     -F "cbct_upload_type=file" \
+     -F "csrfmiddlewaretoken=TOKEN" \
+     http://your-domain/upload/
+```
+
+**Get file registry:**
+```bash
+curl -b cookies.txt http://your-domain/api/processing/files/
+```
+
+**Download file:**
+```bash
+curl -b cookies.txt -o downloaded_file.nii \
+     http://your-domain/api/processing/files/serve/123/
+```
+
+**Check processing jobs:**
+```bash
+curl -b cookies.txt http://your-domain/api/processing/jobs/
+```
+
+## Error Handling
+
+All API endpoints return JSON error responses with appropriate HTTP status codes:
+
+### HTTP Status Codes
+- `200`: Success
+- `400`: Bad Request (invalid parameters)
+- `401`: Unauthorized (not logged in)
+- `403`: Forbidden (insufficient permissions)
+- `404`: Not Found
+- `500`: Internal Server Error
+
+### Error Response Format
+```json
+{
+  "error": "Description of the error"
+}
+```
+
+### Common Errors
+
+**Authentication Errors:**
+```json
+{
+  "error": "Authentication required"
+}
+```
+
+**Permission Errors:**
+```json
+{
+  "error": "You do not have permission to upload scans"
+}
+```
+
+**File Not Found:**
+```json
+{
+  "error": "File not found in registry"
+}
+```
+
+**Invalid Job Type:**
+```json
+{
+  "error": "Invalid job type. Valid types: cbct_processing, ios_processing, audio_transcription"
+}
+```
+
+**Processing Errors:**
+```json
+{
+  "error": "Job not found"
+}
+```
+
+### Best Practices
+
+1. **Session Management**: Always maintain session cookies across requests
+2. **Error Handling**: Check HTTP status codes and parse error messages
+3. **File Validation**: Ensure files are in correct format before upload
+4. **Progress Monitoring**: Use processing job APIs to monitor upload progress
+5. **Resource Cleanup**: Close file handles after uploads
+6. **Rate Limiting**: Be respectful of server resources with reasonable request rates
+
+### Configuration
+
+The API behavior can be configured through Django settings:
+
+- **DATASET_PATH**: Base path for file storage
+- **DATA_UPLOAD_MAX_MEMORY_SIZE**: Maximum upload size (default: 5GB)
+- **FILE_UPLOAD_MAX_MEMORY_SIZE**: Maximum file upload size (default: 5GB)
+- **DATA_UPLOAD_MAX_NUMBER_FILES**: Maximum number of files (default: 1500)
+
+### Security Considerations
+
+1. **HTTPS**: Use HTTPS in production for secure data transmission
+2. **Authentication**: All endpoints require valid authentication
+3. **CSRF Protection**: Web form uploads require CSRF tokens
+4. **File Validation**: Uploaded files are validated for type and content
+5. **Access Control**: Role-based permissions control file access
+6. **Session Security**: Sessions use secure cookies in production
+
+This API provides a complete system for authenticated file uploads and downloads with processing job tracking for the ToothFairy4M dental scan management system.

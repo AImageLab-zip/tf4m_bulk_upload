@@ -1,0 +1,75 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist-info/
+*.egg
+MANIFEST
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# PyInstaller
+build/
+dist/
+*.spec.backup
+*.manifest
+*.exe.manifest
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Project specific
+settings.json
+credentials.py
+*.log
+
+# Build artifacts
+*.zip
+*.dmg
+*.tar.gz
+
+# Temporary files
+tmp/
+*.tmp
+*.bak
+*.cache
+
+# Test files (optional - uncomment if you want to exclude)
+# test_*.py
+# *_test.py
+
+# Data directories (optional - uncomment if needed)
+# data/
+# projects/
+
+# Windows specific
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# macOS specific
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Compiled Python files
+*.pyc
+
+# Distribution / packaging
+*.egg-info/
+dist/
+build/
+*.whl
