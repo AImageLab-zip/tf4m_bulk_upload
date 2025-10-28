@@ -7,8 +7,15 @@ import re
 from typing import Optional, Tuple, List
 from PIL import Image
 import pydicom
-import magic
 import logging
+
+# Try to import magic for MIME type detection (optional)
+try:
+    import magic
+    MAGIC_AVAILABLE = True
+except ImportError:
+    MAGIC_AVAILABLE = False
+    logging.warning("python-magic-bin not available. MIME type detection will be disabled.")
 
 from .models import DataType, FileData, PatientData, MatchStatus
 from .cbct_converter import CBCTConverter
@@ -93,7 +100,12 @@ class FileAnalyzer:
     ]
     
     def __init__(self):
-        self.mime = magic.Magic(mime=True)
+        # Initialize MIME type detector if available
+        if MAGIC_AVAILABLE:
+            self.mime = magic.Magic(mime=True)
+        else:
+            self.mime = None
+            
         self.cbct_converter = CBCTConverter()
         self.match_cache = MatchCache()
         self.logger = logging.getLogger(__name__)
@@ -638,13 +650,14 @@ class FileAnalyzer:
             pydicom.dcmread(file_path, force=True)
             return True
         except:
-            # Check MIME type
-            try:
-                mime_type = self.mime.from_file(file_path)
-                if 'dicom' in mime_type.lower():
-                    return True
-            except:
-                pass
+            # Check MIME type if magic is available
+            if self.mime:
+                try:
+                    mime_type = self.mime.from_file(file_path)
+                    if 'dicom' in mime_type.lower():
+                        return True
+                except:
+                    pass
         
         return False
     

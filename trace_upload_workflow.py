@@ -208,28 +208,28 @@ def show_actual_http_examples():
         {
             "name": "1. Login Request",
             "method": "POST",
-            "url": "http://pdor.ing.unimore.it:8080/login/",
+            "url": "https://toothfairy4m.ing.unimore.it/login/",
             "headers": "Content-Type: application/x-www-form-urlencoded",
             "body": "username=your_username&password=your_password&csrfmiddlewaretoken=xyz789"
         },
         {
             "name": "2. Get Patients List",
             "method": "GET", 
-            "url": "http://pdor.ing.unimore.it:8080/api/maxillo/patients/",
+            "url": "https://toothfairy4m.ing.unimore.it/api/maxillo/patients/",
             "headers": "Cookie: sessionid=abc123; csrftoken=xyz789",
             "body": "(empty)"
         },
         {
             "name": "3. Get Patient Files",
             "method": "GET",
-            "url": "http://pdor.ing.unimore.it:8080/api/maxillo/patients/25/files/",
+            "url": "https://toothfairy4m.ing.unimore.it/api/maxillo/patients/25/files/",
             "headers": "Cookie: sessionid=abc123; csrftoken=xyz789", 
             "body": "(empty)"
         },
         {
             "name": "4. Upload New Patient",
             "method": "POST",
-            "url": "http://pdor.ing.unimore.it:8080/upload/",
+            "url": "https://toothfairy4m.ing.unimore.it/upload/",
             "headers": "Content-Type: multipart/form-data; Cookie: sessionid=abc123",
             "body": "multipart form with: name, upper_scan_raw, lower_scan_raw, cbct files"
         }

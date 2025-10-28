@@ -14,7 +14,7 @@ def test_credential_loading():
     
     # Create a test settings file
     test_settings = {
-        "api_url": "http://pdor.ing.unimore.it:8080",
+        "api_url": "https://toothfairy4m.ing.unimore.it",
         "username": "test_user",
         "password": "test_password"
     }

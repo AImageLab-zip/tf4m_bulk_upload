@@ -22,7 +22,7 @@ def test_api_syntax():
     # Test 1: Check constructor accepts project_slug
     print("✓ Test 1: Constructor with project_slug")
     api_client = TF4MAPIClient(
-        base_url="http://pdor.ing.unimore.it:8080",
+        base_url="https://toothfairy4m.ing.unimore.it",
         username="test_user",
         password="test_pass",
         project_slug="maxillo"

@@ -13,6 +13,8 @@ from gui.patient_browser import PatientBrowser
 from gui.settings_dialog import SettingsDialog
 from gui.upload_manager import UploadManager
 from gui.upload_dialog import UploadDialog
+from gui.log_viewer import LogViewerWindow
+import logging
 
 class MainWindow:
     """Main application window."""
@@ -20,7 +22,8 @@ class MainWindow:
     def __init__(self, root: tk.Tk):
         self.root = root
         self.project_manager = ProjectManager()
-        self.api_client = TF4MAPIClient("http://pdor.ing.unimore.it:8080", project_slug="maxillo")  # Default TF4M URL
+        self.api_client = TF4MAPIClient("https://toothfairy4m.ing.unimore.it", project_slug="maxillo")  # Default TF4M URL
+        self.logger = logging.getLogger(__name__)
         
         # Load saved settings and apply to API client
         self.load_and_apply_settings()
@@ -78,6 +81,8 @@ class MainWindow:
         # Help menu
         help_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Help", menu=help_menu)
+        help_menu.add_command(label="View Console Log", command=self.show_log_viewer)
+        help_menu.add_separator()
         help_menu.add_command(label="About", command=self.show_about)
         
     def create_toolbar(self):
@@ -162,7 +167,7 @@ class MainWindow:
         
         # Default settings
         default_settings = {
-            "api_url": "http://pdor.ing.unimore.it:8080",
+            "api_url": "https://toothfairy4m.ing.unimore.it",
             "username": "",
             "password": ""
         }
@@ -230,8 +235,8 @@ class MainWindow:
                 # Update patient browser
                 self.patient_browser.load_project_data(result)
                 
-                # Enable upload button if there are complete patients
-                if complete_patients > 0:
+                # Enable upload button if there are any patients
+                if total_patients > 0:
                     self.upload_btn.config(state="normal")
                     
             self.analyze_btn.config(state="normal")
@@ -369,6 +374,14 @@ to a Django backend system.
 Developed for TF4M"""
         
         messagebox.showinfo("About", about_text)
+    
+    def show_log_viewer(self):
+        """Show the console log viewer window."""
+        try:
+            LogViewerWindow(self.root)
+        except Exception as e:
+            self.logger.error(f"Failed to open log viewer: {e}")
+            messagebox.showerror("Error", f"Failed to open log viewer: {e}")
     
     # Cache management methods
     

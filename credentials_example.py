@@ -6,7 +6,7 @@ This shows the settings structure and values.
 # Example settings.json structure that gets created:
 example_settings = {
     "tf4m_api": {
-        "base_url": "http://pdor.ing.unimore.it:8080",
+        "base_url": "https://toothfairy4m.ing.unimore.it",
         "username": "your_username",  # Replace with your actual username
         "password": "your_password"   # Replace with your actual password
     },
@@ -24,7 +24,7 @@ print("   File → Settings... (Menu)")
 print("   or ⚙️ Settings (Toolbar Button)")
 
 print("\n🔧 Required Credentials:")
-print("   Server URL: http://pdor.ing.unimore.it:8080")
+print("   Server URL: https://toothfairy4m.ing.unimore.it")
 print("   Username:   [Your TF4M Username]")
 print("   Password:   [Your TF4M Password]")
 

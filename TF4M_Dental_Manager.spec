@@ -19,9 +19,25 @@ is_mac = sys.platform == 'darwin'
 app_name = 'TF4M_Dental_Manager'
 
 # Collect data files
-datas = [
-    ('dcm2niix.exe', '.') if is_windows else (),
-]
+datas = []
+
+# Include the entire bin folder with dcm2niix and any other utilities
+bin_folder = os.path.join(project_root, 'bin')
+if os.path.exists(bin_folder):
+    # Include all files from bin folder
+    for item in os.listdir(bin_folder):
+        item_path = os.path.join(bin_folder, item)
+        if os.path.isfile(item_path):
+            # Add each file to the bin folder in the distribution
+            datas.append((item_path, 'bin'))
+            print(f"Including in bundle: {item} -> bin/")
+
+# Legacy: Also check for dcm2niix.exe in project root (for backwards compatibility)
+if is_windows:
+    root_dcm2niix = os.path.join(project_root, 'dcm2niix.exe')
+    if os.path.isfile(root_dcm2niix):
+        datas.append((root_dcm2niix, '.'))
+        print(f"Including legacy dcm2niix.exe from project root")
 
 # Collect hidden imports
 hiddenimports = [

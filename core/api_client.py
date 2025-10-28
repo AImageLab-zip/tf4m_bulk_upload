@@ -21,6 +21,11 @@ class TF4MAPIClient:
         self.password = password
         self.project_slug = project_slug
         self.session = requests.Session()
+        # Set common headers
+        self.session.headers.update({
+            'User-Agent': 'TF4M-Dental-Manager/1.0',
+            'Accept': 'text/html,application/json,*/*',
+        })
         self.is_authenticated = False
         
     def login(self) -> tuple[bool, str]:
@@ -31,6 +36,8 @@ class TF4MAPIClient:
         try:
             # Get CSRF token first
             login_page = self.session.get(f"{self.base_url}/login/")
+            if login_page.status_code == 403:
+                return False, "Access forbidden - server may require different authentication method"
             if login_page.status_code != 200:
                 return False, f"Failed to get login page: HTTP {login_page.status_code}"
                 
@@ -45,16 +52,37 @@ class TF4MAPIClient:
                 'csrfmiddlewaretoken': csrf_token
             }
             
-            login_response = self.session.post(f"{self.base_url}/login/", data=login_data)
+            # Add headers for CSRF validation
+            headers = {
+                'Referer': f"{self.base_url}/login/",
+                'X-CSRFToken': csrf_token
+            }
             
-            if login_response.status_code == 200:
-                # Check if login was actually successful by trying to access patients API
-                test_response = self.session.get(f"{self.base_url}/api/maxillo/patients/")
-                if test_response.status_code == 200:
+            login_response = self.session.post(
+                f"{self.base_url}/login/", 
+                data=login_data,
+                headers=headers,
+                allow_redirects=False  # Don't follow redirects to detect successful login
+            )
+
+            # Check if sessionid cookie was set (indicates successful login)
+            # Django sets sessionid cookie on successful login, but not on failed login
+            has_session = 'sessionid' in self.session.cookies
+            
+            # A successful login typically returns a redirect (302) and sets sessionid cookie
+            if login_response.status_code == 302 and has_session:
+                # Successful redirect and session established
+                self.is_authenticated = True
+                return True, "Login successful"
+            elif login_response.status_code == 200:
+                # Status 200 usually means the login form was redisplayed with errors
+                if has_session:
+                    # Rare case: session exists but no redirect (should not happen normally)
                     self.is_authenticated = True
                     return True, "Login successful"
                 else:
-                    return False, "Login failed - invalid credentials"
+                    # No session cookie = failed login
+                    return False, "Login failed - invalid username or password"
             else:
                 return False, f"Login failed: HTTP {login_response.status_code}"
                 
@@ -126,24 +154,6 @@ class TF4MAPIClient:
             return False, [], f"Connection error: {str(e)}"
         except json.JSONDecodeError as e:
             return False, [], f"Invalid JSON response: {str(e)}"
-    
-    def find_patient_by_name(self, patient_name: str) -> tuple[bool, Optional[Dict[str, Any]], str]:
-        """Find a patient by name."""
-        success, patients, message = self.get_patients()
-        if not success:
-            return False, None, message
-        
-        # Look for exact or partial match
-        for patient in patients:
-            if patient.get('name', '').lower() == patient_name.lower():
-                return True, patient, "Found exact match"
-        
-        # Look for partial match
-        for patient in patients:
-            if patient_name.lower() in patient.get('name', '').lower():
-                return True, patient, "Found partial match"
-        
-        return False, None, "Patient not found"
     
     def delete_patient(self, patient_id: str) -> tuple[bool, str]:
         """Delete a patient from the TF4M platform.
@@ -223,39 +233,39 @@ class TF4MAPIClient:
                 return False, f"Authentication failed: {login_message}"
         
         try:
-            # Check if patient already exists
-            patient_exists, existing_patient, search_message = self.find_patient_by_name(patient_data.patient_id)
+            # # Check if patient already exists
+            # patient_exists, existing_patient, search_message = self.find_patient_by_name(patient_data.patient_id)
             
-            if patient_exists and existing_patient:
-                patient_id = existing_patient['patient_id']
-                remote_patient_name = existing_patient['name']
+            # if patient_exists and existing_patient:
+            #     patient_id = existing_patient['patient_id']
+            #     remote_patient_name = existing_patient['name']
                 
-                # Get existing files for comparison
-                files_success, existing_files, files_message = self.get_patient_files(patient_id)
-                if not files_success:
-                    return False, f"Failed to get existing files: {files_message}"
+            #     # Get existing files for comparison
+            #     files_success, existing_files, files_message = self.get_patient_files(patient_id)
+            #     if not files_success:
+            #         return False, f"Failed to get existing files: {files_message}"
                 
-                # Check which files need to be uploaded
-                files_to_upload = self._compare_and_filter_files(patient_data, existing_files)
+            #     # Check which files need to be uploaded
+            #     files_to_upload = self._compare_and_filter_files(patient_data, existing_files)
                 
-                if not files_to_upload:
-                    return True, f"Patient '{remote_patient_name}' already has all files up to date"
+            #     if not files_to_upload:
+            #         return True, f"Patient '{remote_patient_name}' already has all files up to date"
                 
-                # Check if delete_before_reupload is enabled
-                if not delete_before_reupload:
-                    # Skip this patient if delete is disabled
-                    return True, f"Patient '{remote_patient_name}' already exists (skipped due to settings)"
+            #     # Check if delete_before_reupload is enabled
+            #     if not delete_before_reupload:
+            #         # Skip this patient if delete is disabled
+            #         return True, f"Patient '{remote_patient_name}' already exists (skipped due to settings)"
                 
-                # Since API doesn't support updates, delete the existing patient
-                if progress_callback:
-                    progress_callback("Deleting existing patient from server...")
+            #     # Since API doesn't support updates, delete the existing patient
+            #     if progress_callback:
+            #         progress_callback("Deleting existing patient from server...")
                 
-                delete_success, delete_message = self.delete_patient(patient_id)
-                if not delete_success:
-                    return False, f"Failed to delete existing patient before reupload: {delete_message}"
+            #     delete_success, delete_message = self.delete_patient(patient_id)
+            #     if not delete_success:
+            #         return False, f"Failed to delete existing patient before reupload: {delete_message}"
                 
-                if progress_callback:
-                    progress_callback(f"Deleted existing patient '{remote_patient_name}'. Creating new patient...")
+            #     if progress_callback:
+            #         progress_callback(f"Deleted existing patient '{remote_patient_name}'. Creating new patient...")
             
             # Create new patient and upload all files
             success, patient_id, message = self._create_new_patient(patient_data)
@@ -269,10 +279,10 @@ class TF4MAPIClient:
             )
             
             if success:
-                if patient_exists:
-                    return True, f"Reuploaded patient '{patient_data.patient_id}' with {len(all_files)} files"
-                else:
-                    return True, f"Created new patient '{patient_data.patient_id}' with {len(all_files)} files"
+                # if patient_exists:
+                #     return True, f"Reuploaded patient '{patient_data.patient_id}' with {len(all_files)} files"
+                # else:
+                return True, f"Created new patient '{patient_data.patient_id}' with {len(all_files)} files"
             else:
                 return False, f"Failed to upload files: {message}"
                 
@@ -368,7 +378,7 @@ class TF4MAPIClient:
             # Prepare form data - matching upload_script.py
             form_data = {
                 'name': patient_data.patient_id,
-                'folder': '2',  # Default folder
+                'folder': '4',  # Default folder
                 'visibility': 'private',
                 'cbct_upload_type': 'file'
             }
@@ -416,10 +426,15 @@ class TF4MAPIClient:
                 
                 # Upload patient - matching upload_script.py API call
                 upload_url = f"{self.base_url}/api/{self.project_slug}/upload/"
+                headers = {
+                    'X-CSRFToken': csrf_token,
+                    'Referer': upload_url
+                }
                 response = self.session.post(
                     upload_url,
                     data=form_data,
                     files=files_to_upload,
+                    headers=headers,
                     timeout=300
                 )
                 
@@ -513,7 +528,16 @@ class TF4MAPIClient:
                 'identifier': patient_identifier,
                 'name': patient_identifier  # Use identifier as name for now
             }
-            response = self.session.post(f"{self.base_url}/api/patients/", json=patient_data)
+            csrf_token = self._get_csrf_token()
+            headers = {
+                'X-CSRFToken': csrf_token,
+                'Referer': self.base_url
+            } if csrf_token else {}
+            response = self.session.post(
+                f"{self.base_url}/api/patients/", 
+                json=patient_data,
+                headers=headers
+            )
             if response.status_code == 201:
                 return response.json()['id']
             
@@ -557,10 +581,17 @@ class TF4MAPIClient:
                     'filename': file_data.filename
                 }
                 
+                csrf_token = self._get_csrf_token()
+                headers = {
+                    'X-CSRFToken': csrf_token,
+                    'Referer': f"{self.base_url}/api/{self.project_slug}/uploads/"
+                } if csrf_token else {}
+                
                 response = self.session.post(
                     f"{self.base_url}/api/{self.project_slug}/uploads/",
                     files=files,
                     data=data,
+                    headers=headers,
                     timeout=300  # 5 minutes timeout for large files
                 )
                 
@@ -609,11 +640,13 @@ class TF4MAPIClient:
         self.username = username
         self.password = password
         self.is_authenticated = False  # Force re-authentication
+        self.session.cookies.clear()  # Clear existing session cookies
     
     def set_base_url(self, base_url: str):
         """Update the base URL."""
         self.base_url = base_url.rstrip('/')
         self.is_authenticated = False  # Force re-authentication
+        self.session.cookies.clear()  # Clear existing session cookies
 
 
 # Keep the old APIClient class for backward compatibility

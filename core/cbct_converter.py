@@ -3,6 +3,7 @@ CBCT DICOM to NIfTI converter using dcm2niix.
 """
 
 import os
+import sys
 import subprocess
 import tempfile
 import shutil
@@ -29,10 +30,15 @@ class CBCTConverter:
         Returns:
             Path to converted NIfTI file or None if conversion failed
         """
+        self.logger.info(f"Starting CBCT to NIfTI conversion for patient {patient_id}")
+        self.logger.info(f"DICOM folder: {dicom_folder}")
+        self.logger.info(f"Project root: {project_root}")
+        
         try:
             # Create tmp folder at project level
             tmp_folder = os.path.join(project_root, "tmp")
             os.makedirs(tmp_folder, exist_ok=True)
+            self.logger.debug(f"Temp folder: {tmp_folder}")
             
             # Define NIfTI output path with patient ID
             nifti_filename = f"{patient_id}.nii.gz"
@@ -46,10 +52,28 @@ class CBCTConverter:
             # Check if dcm2niix is available
             if not self._check_dcm2niix_available():
                 self.logger.error("dcm2niix is not available or not installed")
+                self.logger.error("SOLUTION: Install dcm2niix using one of these methods:")
+                self.logger.error("  1. pip install dcm2niix")
+                self.logger.error("  2. Download from https://github.com/rordenlab/dcm2niix/releases")
+                self.logger.error("  3. Install via conda: conda install -c conda-forge dcm2niix")
+                return None
+            
+            # Verify DICOM folder exists and has files
+            if not os.path.exists(dicom_folder):
+                self.logger.error(f"DICOM folder does not exist: {dicom_folder}")
+                return None
+            
+            dicom_files = [f for f in os.listdir(dicom_folder) if os.path.isfile(os.path.join(dicom_folder, f))]
+            self.logger.info(f"Found {len(dicom_files)} files in DICOM folder")
+            
+            if len(dicom_files) == 0:
+                self.logger.error("No files found in DICOM folder")
                 return None
             
             # Create temporary conversion folder
             with tempfile.TemporaryDirectory() as temp_conversion_dir:
+                self.logger.debug(f"Temporary conversion directory: {temp_conversion_dir}")
+                
                 # Run dcm2niix conversion to temporary directory
                 temp_nifti_path = self._run_dcm2niix(dicom_folder, temp_conversion_dir)
                 
@@ -57,14 +81,15 @@ class CBCTConverter:
                     # Move and rename the NIfTI file to final location
                     shutil.move(temp_nifti_path, final_nifti_path)
                     
-                    self.logger.info(f"Successfully converted CBCT to NIfTI: {final_nifti_path}")
+                    file_size = os.path.getsize(final_nifti_path)
+                    self.logger.info(f"Successfully converted CBCT to NIfTI: {final_nifti_path} ({file_size:,} bytes)")
                     return final_nifti_path
                 else:
                     self.logger.error("dcm2niix conversion failed or produced no output")
                     return None
                 
         except Exception as e:
-            self.logger.error(f"Error converting CBCT to NIfTI: {e}")
+            self.logger.exception(f"Error converting CBCT to NIfTI for patient {patient_id}:")
             return None
     
     def create_patient_zip(self, patient_folder: str, patient_id: str, project_root: str) -> Optional[str]:
@@ -142,21 +167,72 @@ class CBCTConverter:
     
     def _get_dcm2niix_executable(self) -> Optional[str]:
         """Find the dcm2niix executable path."""
-        # First, try to find dcm2niix in the virtual environment
+        self.logger.info("Searching for dcm2niix executable...")
+        
+        # First priority: bundled executable in the 'bin' folder
+        # This ensures the application works out-of-the-box without installation
+        try:
+            # Check if running as PyInstaller bundle
+            if getattr(sys, 'frozen', False):
+                # Running as compiled executable
+                bundle_dir = sys._MEIPASS
+                self.logger.debug(f"Running as PyInstaller bundle: {bundle_dir}")
+            else:
+                # Running as normal Python script
+                current_dir = os.path.dirname(os.path.abspath(__file__))
+                bundle_dir = os.path.dirname(current_dir)
+            
+            # Check in bin folder
+            bundled_dcm2niix = os.path.join(bundle_dir, 'bin', 'dcm2niix.exe')
+            self.logger.debug(f"Checking for bundled executable: {bundled_dcm2niix}")
+            
+            if os.path.isfile(bundled_dcm2niix):
+                self.logger.info(f"Found bundled dcm2niix: {bundled_dcm2niix}")
+                return bundled_dcm2niix
+            else:
+                self.logger.debug("Bundled dcm2niix not found in bin folder")
+                
+            # Also check root of bundle (legacy location)
+            if getattr(sys, 'frozen', False):
+                legacy_dcm2niix = os.path.join(bundle_dir, 'dcm2niix.exe')
+                self.logger.debug(f"Checking legacy location: {legacy_dcm2niix}")
+                if os.path.isfile(legacy_dcm2niix):
+                    self.logger.info(f"Found dcm2niix in legacy location: {legacy_dcm2niix}")
+                    return legacy_dcm2niix
+                    
+        except Exception as e:
+            self.logger.warning(f"Error checking for bundled dcm2niix: {e}")
+        
+        # Second priority: virtual environment
         venv_path = os.environ.get('VIRTUAL_ENV')
         if venv_path:
             venv_dcm2niix = os.path.join(venv_path, 'Scripts', 'dcm2niix.exe')
+            self.logger.debug(f"Checking virtual environment: {venv_dcm2niix}")
             if os.path.isfile(venv_dcm2niix):
+                self.logger.info(f"Found dcm2niix in virtual environment: {venv_dcm2niix}")
                 return venv_dcm2niix
+            else:
+                self.logger.debug("dcm2niix not found in virtual environment")
+        else:
+            self.logger.debug("No VIRTUAL_ENV environment variable set")
         
-        # Try to get script directory relative to current file
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        project_root = os.path.dirname(current_dir)
-        venv_dcm2niix = os.path.join(project_root, '.venv', 'Scripts', 'dcm2niix.exe')
-        if os.path.isfile(venv_dcm2niix):
-            return venv_dcm2niix
+        # Third priority: project .venv directory (for development)
+        if not getattr(sys, 'frozen', False):
+            try:
+                current_dir = os.path.dirname(os.path.abspath(__file__))
+                project_root = os.path.dirname(current_dir)
+                venv_dcm2niix = os.path.join(project_root, '.venv', 'Scripts', 'dcm2niix.exe')
+                self.logger.debug(f"Checking project .venv: {venv_dcm2niix}")
+                if os.path.isfile(venv_dcm2niix):
+                    self.logger.info(f"Found dcm2niix in project .venv: {venv_dcm2niix}")
+                    return venv_dcm2niix
+                else:
+                    self.logger.debug("dcm2niix not found in project .venv")
+            except Exception as e:
+                self.logger.warning(f"Error checking project .venv: {e}")
         
-        # Try system PATH
+        # Fourth priority: system PATH
+        self.logger.debug("Checking system PATH for dcm2niix")
         try:
             result = subprocess.run(
                 ["dcm2niix", "-h"], 
@@ -165,10 +241,33 @@ class CBCTConverter:
                 timeout=10
             )
             if result.returncode == 0:
+                self.logger.info("Found dcm2niix in system PATH")
                 return "dcm2niix"
-        except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.SubprocessError):
-            pass
+        except subprocess.TimeoutExpired:
+            self.logger.warning("dcm2niix in PATH timed out")
+        except FileNotFoundError:
+            self.logger.debug("dcm2niix not found in system PATH")
+        except subprocess.SubprocessError as e:
+            self.logger.warning(f"Error checking dcm2niix in PATH: {e}")
         
+        self.logger.error("dcm2niix executable not found in any location")
+        self.logger.error("INSTALLATION OPTIONS:")
+        self.logger.error("  1. Download dcm2niix.exe from https://github.com/rordenlab/dcm2niix/releases")
+        
+        # Provide appropriate path based on whether running as bundle or not
+        try:
+            if getattr(sys, 'frozen', False):
+                app_dir = os.path.dirname(sys.executable)
+                self.logger.error(f"     and place it in: {os.path.join(app_dir, 'bin', 'dcm2niix.exe')}")
+            else:
+                current_dir = os.path.dirname(os.path.abspath(__file__))
+                project_root = os.path.dirname(current_dir)
+                self.logger.error(f"     and place it in the 'bin' folder: {os.path.join(project_root, 'bin', 'dcm2niix.exe')}")
+        except:
+            pass
+            
+        self.logger.error("  2. Install via pip: pip install dcm2niix")
+        self.logger.error("  3. Install via conda: conda install -c conda-forge dcm2niix")
         return None
 
     def _check_dcm2niix_available(self) -> bool:
@@ -213,12 +312,16 @@ class CBCTConverter:
             
             self.logger.info(f"Running dcm2niix command: {' '.join(cmd)}")
             
-            # Run the conversion
+            # Run the conversion, suppress terminal window on Windows
+            creationflags = 0
+            if sys.platform.startswith('win'):
+                creationflags = subprocess.CREATE_NO_WINDOW
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=300  # 5 minute timeout
+                timeout=300,  # 5 minute timeout
+                creationflags=creationflags
             )
             
             # Log the results regardless of return code
@@ -271,11 +374,16 @@ class CBCTConverter:
             
             self.logger.info(f"Running fallback command: {' '.join(cmd)}")
             
+            # Run the conversion, suppress terminal window on Windows
+            creationflags = 0
+            if sys.platform.startswith('win'):
+                creationflags = subprocess.CREATE_NO_WINDOW
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=300
+                timeout=300,
+                creationflags=creationflags
             )
             
             if result.returncode != 0:

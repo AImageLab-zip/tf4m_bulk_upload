@@ -79,7 +79,7 @@ class SettingsDialog:
         url_entry.grid(row=0, column=1, sticky="ew", padx=10, pady=10)
         
         # Add default URL suggestion
-        url_help = ttk.Label(api_frame, text="Default: http://pdor.ing.unimore.it:8080", 
+        url_help = ttk.Label(api_frame, text="Default: https://toothfairy4m.ing.unimore.it", 
                            foreground="gray", font=("TkDefaultFont", 8))
         url_help.grid(row=1, column=1, sticky="w", padx=10)
         
@@ -242,7 +242,7 @@ class SettingsDialog:
     def load_current_values(self):
         """Load current values into the form."""
         # TF4M API settings
-        self.api_url_var.set(self.settings.get("api_url", "http://pdor.ing.unimore.it:8080"))
+        self.api_url_var.set(self.settings.get("api_url", "https://toothfairy4m.ing.unimore.it"))
         self.username_var.set(self.settings.get("username", ""))
         self.password_var.set(self.settings.get("password", ""))
         
@@ -339,7 +339,7 @@ class SettingsDialog:
     def load_settings(self):
         """Load settings from file."""
         default_settings = {
-            "api_url": "http://pdor.ing.unimore.it:8080",
+            "api_url": "https://toothfairy4m.ing.unimore.it",
             "username": "",
             "password": "",
             "delete_before_reupload": True,  # Default to enabled for safety

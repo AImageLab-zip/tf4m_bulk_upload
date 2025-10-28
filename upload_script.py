@@ -3,7 +3,7 @@ import json
 import os
 from pathlib import Path
 
-BASE_URL = "http://pdor.ing.unimore.it:8080"
+BASE_URL = "https://toothfairy4m.ing.unimore.it"
 PROJECT_SLUG = "maxillo"
 
 USERNAME = "llumetti"

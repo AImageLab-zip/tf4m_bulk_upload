@@ -8,6 +8,7 @@ This document provides instructions for creating installers for the TF4M Dental 
 - Python 3.8 or higher
 - Virtual environment with all dependencies installed (see `requirements.txt`)
 - PyInstaller (will be installed automatically by build scripts)
+- **dcm2niix executable** (required for DICOM to NIfTI conversion)
 
 ### Windows Additional Requirements
 - Windows 10 or higher
@@ -20,16 +21,39 @@ This document provides instructions for creating installers for the TF4M Dental 
 - Optional: Homebrew for creating DMG files: `brew install create-dmg`
 - Optional: Apple Developer ID for code signing and notarization
 
+## Setup dcm2niix (IMPORTANT!)
+
+Before building, you MUST include dcm2niix in the application bundle:
+
+### Automatic Setup (Recommended)
+```powershell
+.\setup_dcm2niix.ps1
+```
+
+This script will:
+1. Download the latest dcm2niix from GitHub
+2. Extract and place it in the `bin` folder
+3. Verify it works correctly
+
+### Manual Setup
+1. Download dcm2niix from https://github.com/rordenlab/dcm2niix/releases
+2. Extract `dcm2niix.exe` (Windows) or `dcm2niix` (macOS/Linux)
+3. Place it in the `bin` folder at the project root
+4. The application will automatically use this bundled version
+
+**Note:** Without dcm2niix, the application cannot convert DICOM files to NIfTI format!
+
 ## Building on Windows
 
 ### Quick Build
 
-1. Open PowerShell in the project directory
-2. Run the build script:
+1. **FIRST: Setup dcm2niix** (see above)
+2. Open PowerShell in the project directory
+3. Run the build script:
    ```powershell
    .\build_windows.ps1
    ```
-3. Follow the prompts to optionally create a ZIP file
+4. Follow the prompts to optionally create a ZIP file
 
 The built application will be in `dist\TF4M_Dental_Manager\TF4M_Dental_Manager.exe`
 
@@ -38,6 +62,8 @@ The built application will be in `dist\TF4M_Dental_Manager\TF4M_Dental_Manager.e
 If you prefer to build manually:
 
 ```powershell
+# FIRST: Ensure dcm2niix.exe is in the bin folder!
+
 # Activate virtual environment
 .venv\Scripts\Activate.ps1
 

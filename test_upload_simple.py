@@ -77,7 +77,7 @@ def test_upload_workflow():
     
     # Initialize API client
     print("\n2️⃣ Initializing API client...")
-    base_url = settings.get("api_url", "http://pdor.ing.unimore.it:8080")
+    base_url = settings.get("api_url", "https://toothfairy4m.ing.unimore.it")
     username = settings.get("username", "")
     password = settings.get("password", "")
     
@@ -167,7 +167,7 @@ def show_upload_request_example():
     
     example_request = {
         "method": "POST",
-        "url": "http://pdor.ing.unimore.it:8080/upload/",
+        "url": "https://toothfairy4m.ing.unimore.it/upload/",
         "headers": {
             "Content-Type": "multipart/form-data",
             "Cookie": "csrftoken=...; sessionid=..."

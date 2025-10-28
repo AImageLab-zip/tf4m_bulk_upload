@@ -56,7 +56,7 @@ def print_upload_example():
     
     print("\n2. TF4M API ENDPOINTS:")
     print("-" * 40)
-    print("  Base URL: http://pdor.ing.unimore.it:8080")
+    print("  Base URL: https://toothfairy4m.ing.unimore.it")
     print("  Login: POST /login/")
     print("  Patients List: GET /api/maxillo/patients/")
     print("  Patient Files: GET /api/maxillo/patients/{id}/files/")
@@ -171,7 +171,7 @@ def demonstrate_api_client():
     print("="*80)
     
     # Create API client instance
-    api_client = TF4MAPIClient("http://pdor.ing.unimore.it:8080")
+    api_client = TF4MAPIClient("https://toothfairy4m.ing.unimore.it")
     
     print(f"\n1. API Client initialized:")
     print(f"   Base URL: {api_client.base_url}")

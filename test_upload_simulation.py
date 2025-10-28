@@ -22,7 +22,7 @@ from core.match_cache import MatchCache
 class UploadTestSimulator:
     """Simulates the upload process for testing purposes."""
     
-    def __init__(self, base_url: str = "http://pdor.ing.unimore.it:8080", 
+    def __init__(self, base_url: str = "https://toothfairy4m.ing.unimore.it", 
                  username: str = "", password: str = ""):
         """Initialize the test simulator."""
         self.api_client = TF4MAPIClient(base_url, username, password)
@@ -323,7 +323,7 @@ def main():
             pass
     
     # Get credentials from settings or use defaults
-    base_url = settings.get("api_url", "http://pdor.ing.unimore.it:8080")
+    base_url = settings.get("api_url", "https://toothfairy4m.ing.unimore.it")
     username = settings.get("username", "")
     password = settings.get("password", "")
     
