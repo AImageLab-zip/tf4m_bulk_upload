@@ -8,6 +8,8 @@ import hashlib
 from typing import Optional, Dict, Any, Callable, List, Tuple
 import json
 import time
+import logging
+import re
 from threading import Thread
 
 from .models import PatientData, DataType, FileData
@@ -27,6 +29,7 @@ class TF4MAPIClient:
             'Accept': 'text/html,application/json,*/*',
         })
         self.is_authenticated = False
+        self.csrf_token = None  # Store CSRF token if not in cookies
         
     def login(self) -> tuple[bool, str]:
         """Login to the TF4M API using session authentication."""
@@ -34,16 +37,70 @@ class TF4MAPIClient:
             return False, "Username and password are required"
             
         try:
+            logging.info(f"Attempting login for user: {self.username}")
+            logging.debug(f"Login URL: {self.base_url}/login/")
+            
             # Get CSRF token first
             login_page = self.session.get(f"{self.base_url}/login/")
+            
+            logging.debug(f"Login page response status: {login_page.status_code}")
+            logging.debug(f"Login page cookies: {dict(login_page.cookies)}")
+            logging.debug(f"Session cookies after GET: {dict(self.session.cookies)}")
+            
             if login_page.status_code == 403:
+                logging.error("Access forbidden (403) when accessing login page")
                 return False, "Access forbidden - server may require different authentication method"
             if login_page.status_code != 200:
+                logging.error(f"Failed to get login page: HTTP {login_page.status_code}")
                 return False, f"Failed to get login page: HTTP {login_page.status_code}"
-                
-            csrf_token = self.session.cookies.get('csrftoken')
+            
+            # Extract CSRF token - try multiple methods
+            csrf_token = None
+            
+            # Method 1: Try to get CSRF token from cookie first
+            if 'csrftoken' in self.session.cookies:
+                csrf_token = self.session.cookies['csrftoken']
+                logging.debug(f"CSRF token from cookie: {csrf_token[:20]}...")
+            
+            # Method 2: If not in cookie, try to extract from HTML input field
             if not csrf_token:
+                csrf_match = re.search(
+                    r'name=["\']csrfmiddlewaretoken["\'] value=["\'](.+?)["\']',
+                    login_page.text
+                )
+                if csrf_match:
+                    csrf_token = csrf_match.group(1)
+                    logging.debug(f"CSRF token from HTML input: {csrf_token[:20]}...")
+            
+            # Method 3: Try alternative HTML pattern
+            if not csrf_token:
+                csrf_match = re.search(
+                    r'value=["\'](.+?)["\'] name=["\']csrfmiddlewaretoken["\']',
+                    login_page.text
+                )
+                if csrf_match:
+                    csrf_token = csrf_match.group(1)
+                    logging.debug(f"CSRF token from HTML (alt pattern): {csrf_token[:20]}...")
+            
+            # Method 4: Try to find in JavaScript
+            if not csrf_token:
+                csrf_match = re.search(
+                    r'csrfmiddlewaretoken["\']:\s*["\'](.+?)["\']',
+                    login_page.text
+                )
+                if csrf_match:
+                    csrf_token = csrf_match.group(1)
+                    logging.debug(f"CSRF token from JavaScript: {csrf_token[:20]}...")
+            
+            if not csrf_token:
+                logging.error("Could not retrieve CSRF token from login page")
+                logging.debug(f"Response text (first 1000 chars): {login_page.text[:1000]}")
+                logging.debug(f"Response headers: {dict(login_page.headers)}")
                 return False, "Could not retrieve CSRF token"
+            
+            # Store CSRF token for later use
+            self.csrf_token = csrf_token
+            logging.debug(f"Stored CSRF token: {csrf_token[:20]}...")
             
             # Login with credentials
             login_data = {
@@ -58,6 +115,8 @@ class TF4MAPIClient:
                 'X-CSRFToken': csrf_token
             }
             
+            logging.debug("Posting login credentials...")
+            
             login_response = self.session.post(
                 f"{self.base_url}/login/", 
                 data=login_data,
@@ -65,6 +124,10 @@ class TF4MAPIClient:
                 allow_redirects=False  # Don't follow redirects to detect successful login
             )
 
+            logging.debug(f"Login POST response status: {login_response.status_code}")
+            logging.debug(f"Login POST response cookies: {dict(login_response.cookies)}")
+            logging.debug(f"Session cookies after POST: {dict(self.session.cookies)}")
+            
             # Check if sessionid cookie was set (indicates successful login)
             # Django sets sessionid cookie on successful login, but not on failed login
             has_session = 'sessionid' in self.session.cookies
@@ -73,33 +136,46 @@ class TF4MAPIClient:
             if login_response.status_code == 302 and has_session:
                 # Successful redirect and session established
                 self.is_authenticated = True
+                logging.info(f"Login successful for user: {self.username}")
+                logging.info(f"Available cookies after login: {dict(self.session.cookies)}")
+                logging.info(f"CSRF token available: {'csrftoken' in self.session.cookies}")
                 return True, "Login successful"
             elif login_response.status_code == 200:
                 # Status 200 usually means the login form was redisplayed with errors
                 if has_session:
                     # Rare case: session exists but no redirect (should not happen normally)
                     self.is_authenticated = True
+                    logging.info(f"Login successful for user: {self.username} (no redirect)")
                     return True, "Login successful"
                 else:
                     # No session cookie = failed login
+                    logging.error("Login failed: No sessionid cookie received")
+                    if 'errorlist' in login_response.text or 'error' in login_response.text.lower():
+                        logging.debug("Login page shows error message")
                     return False, "Login failed - invalid username or password"
             else:
+                logging.error(f"Login failed: HTTP {login_response.status_code}")
                 return False, f"Login failed: HTTP {login_response.status_code}"
                 
         except requests.exceptions.RequestException as e:
+            logging.error(f"Connection error during login: {e}")
             return False, f"Connection error during login: {str(e)}"
     
     def _get_csrf_token(self) -> Optional[str]:
-        """Get CSRF token from session cookies or by fetching upload page."""
+        """Get CSRF token from session cookies or stored token."""
+        # Try to get from cookies first
         csrf_token = self.session.cookies.get('csrftoken')
-        if not csrf_token:
-            # Try to get fresh CSRF token from upload page
-            try:
-                self.session.get(f"{self.base_url}/upload/")
-                csrf_token = self.session.cookies.get('csrftoken')
-            except Exception:
-                pass
-        return csrf_token
+        if csrf_token:
+            logging.debug(f"Using CSRF token from session cookies: {csrf_token[:20]}...")
+            return csrf_token
+        
+        # Fall back to stored token (from login)
+        if self.csrf_token:
+            logging.debug(f"Using stored CSRF token from login: {self.csrf_token[:20]}...")
+            return self.csrf_token
+        
+        logging.warning("No CSRF token available - authentication may be required")
+        return None
     
     def test_connection(self) -> tuple[bool, str]:
         """Test the connection to the API."""
@@ -371,9 +447,13 @@ class TF4MAPIClient:
         """Create a new patient using the TF4M upload endpoint."""
         try:
             # Get CSRF token
+            logging.info("Creating new patient - fetching CSRF token...")
             csrf_token = self._get_csrf_token()
             if not csrf_token:
+                logging.error("Failed to get CSRF token for patient creation")
                 return False, None, "Failed to get CSRF token"
+            
+            logging.info(f"Successfully obtained CSRF token: {csrf_token[:20]}...")
             
             # Prepare form data - matching upload_script.py
             form_data = {
